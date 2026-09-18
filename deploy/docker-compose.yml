@@ -1,0 +1,138 @@
+# Eatlify backend. Only nginx is reachable from the internet; the six services
+# talk to each other by container name on the private `eatlify` network and
+# publish no ports at all.
+#
+#   docker compose up -d --build
+#
+# TLS must be issued once before the first start - see ./init-tls.sh.
+
+name: eatlify
+
+x-service: &service
+  restart: unless-stopped
+  env_file: .env
+  networks: [eatlify]
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-build: &build
+  context: ../services
+  dockerfile: Dockerfile
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    networks: [eatlify]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    # restaurant awaits the broker at module load and rider exits if it is
+    # missing, so they must not start before this reports healthy
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  auth:
+    <<: *service
+    build: {<<: *build, args: {SERVICE: auth}}
+    environment:
+      PORT: 5001
+
+  restaurant:
+    <<: *service
+    build: {<<: *build, args: {SERVICE: restaurant}}
+    environment:
+      PORT: 5002
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+
+  utils:
+    <<: *service
+    build: {<<: *build, args: {SERVICE: utils}}
+    environment:
+      PORT: 5003
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+
+  realtime:
+    <<: *service
+    build: {<<: *build, args: {SERVICE: realtime}}
+    environment:
+      PORT: 5004
+
+  rider:
+    <<: *service
+    build: {<<: *build, args: {SERVICE: rider}}
+    environment:
+      PORT: 5005
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+
+  admin:
+    <<: *service
+    build: {<<: *build, args: {SERVICE: admin}}
+    environment:
+      PORT: 5006
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    networks: [eatlify]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      # Substitute only DOMAIN, or envsubst would also eat $host, $remote_addr
+      # and every other nginx runtime variable in the template.
+      NGINX_ENVSUBST_FILTER: DOMAIN
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on: [auth, restaurant, utils, realtime, rider, admin]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Renewal only. The first certificate is issued by ./init-tls.sh, because
+  # nginx will not start without one and cannot serve the challenge yet.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: >
+      sh -c 'trap exit TERM;
+             while :; do
+               certbot renew --webroot -w /var/www/certbot --quiet;
+               sleep 12h & wait $${!};
+             done'
+
+networks:
+  eatlify:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  certbot_conf:
+  certbot_www:
