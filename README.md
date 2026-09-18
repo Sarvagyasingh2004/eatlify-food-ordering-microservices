@@ -6,6 +6,66 @@ restaurants, order, pay, and watch the rider approach on a live map; sellers run
 their menu and see their sales; riders take deliveries and track earnings; an
 admin approves new restaurants and riders.
 
+## Features
+
+### Customers
+- **Google OAuth login** — no passwords; a JWT is issued on first sign-in and a
+  role is chosen immediately after
+- **Nearby restaurant discovery** using a MongoDB `$geoNear` query against a
+  `2dsphere` index, ordered by real distance from the delivery address
+- **Address book on an interactive map** — pick a point with Leaflet, reverse
+  geocode it to a readable address, save it for reuse
+- **Cart scoped to a single restaurant**, with quantity controls and a running
+  subtotal, delivery fee and platform fee breakdown
+- **Two payment providers** — Razorpay (in-page checkout) and Stripe (hosted
+  redirect); payment success is confirmed over RabbitMQ, not the browser
+- **Live order tracking** — status changes arrive over Socket.IO, and once a
+  rider picks up, their position streams onto a Leaflet map with a road route
+  drawn between rider and destination
+- **Order history** with per-order item breakdown and status
+
+### Restaurant owners (sellers)
+- **Restaurant profile** with image upload, phone, map-pinned location, and an
+  open/closed switch that immediately stops new orders
+- **Menu management** — add items with images, toggle per-item availability,
+  delete items
+- **Live order board** — new paid orders arrive over Socket.IO with an audible
+  alert, and advance through `accepted -> preparing -> ready_for_rider`
+- **Sales dashboard** — gross food sales, platform commission, net payout,
+  average order value, best-selling items and a daily bar series, filterable by
+  today / 7 days / 30 days / all time. Delivered orders count as earned;
+  paid orders still in flight are shown separately as pending
+
+### Riders
+- **Onboarding with document capture** — Aadhaar, driving licence and a photo,
+  held unverified until an admin approves
+- **Go online / offline**, gated on verification, with the rider's current
+  position recorded for dispatch
+- **Order offers broadcast to nearby available riders** — RabbitMQ fans the
+  offer out, a sound plays, and the first rider to accept wins the order
+- **Active delivery view** with a live map, road routing and one-tap
+  `picked_up -> delivered` progression
+- **Delivery history**, paginated, showing what each drop paid
+- **Earnings dashboard** — total earned, deliveries completed, distance
+  covered, average per delivery and a daily series, over the same date ranges
+
+### Admins
+- **Approval queue** for restaurants and riders awaiting verification, each
+  showing the submitted documents and details
+- **One-click verification** that immediately unblocks the seller or rider
+
+### Platform-wide
+- **Six independently deployable services**, each with its own `package.json`,
+  `.env` and lifecycle — no shared workspace or shared code package
+- **Role-based access** enforced twice: frontend route guards plus backend
+  middleware (`isAuth`, `isSeller`, `isAdmin`)
+- **Service-to-service calls guarded by a shared internal key** that is never
+  shipped to the browser
+- **Event-driven where delivery matters** — payment confirmation and rider
+  dispatch go through RabbitMQ queues rather than direct HTTP, so a service
+  restart does not lose them
+- **Unpaid orders self-destruct** via a 15-minute MongoDB TTL index
+
 ## Architecture
 
 ```
@@ -92,13 +152,50 @@ earned; paid orders still in flight are reported separately as pending.
 
 ## Tech Stack
 
-**Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4, React Router,
-Axios, `@react-oauth/google`, Leaflet / `react-leaflet` with
-`leaflet-routing-machine`, `socket.io-client`, `react-hot-toast`.
+### Frontend
+| Library | Used for |
+|---|---|
+| React 19 + TypeScript | UI, with role-based shells rather than a single route tree |
+| Vite 8 | Dev server and production build |
+| Tailwind CSS v4 (`@tailwindcss/vite`) | All styling; no component library |
+| React Router 6 | Customer-facing routes and route guards |
+| Axios | Every HTTP call, with a bearer token from `localStorage` |
+| `@react-oauth/google` | Google sign-in via the auth-code popup flow |
+| **Leaflet + `react-leaflet`** | All maps: address picking, rider tracking, delivery view |
+| **`leaflet-routing-machine`** | Draws the actual road route between rider and drop, via the public OSRM router |
+| `socket.io-client` | Live order status and rider position, WebSocket transport only |
+| `@stripe/stripe-js` | Present as a dependency; Stripe Checkout is a hosted redirect so it is not loaded at runtime |
+| `react-hot-toast` | All user feedback |
+| `react-icons` | Icon set |
 
-**Backend:** Node.js, Express 5, TypeScript, MongoDB + Mongoose (`2dsphere`
-geospatial indexes), the raw MongoDB driver in `admin`, JWT auth, Socket.IO,
-RabbitMQ (`amqplib`), Multer + Cloudinary, Razorpay and Stripe.
+**External map services, called straight from the browser — no API key, no quota guarantees:**
+
+| Service | Used for |
+|---|---|
+| OpenStreetMap tiles | Base layer on every map |
+| **Nominatim** (`nominatim.openstreetmap.org`) | Reverse geocoding a pin into a readable address, in `AppContext` and `AddAddressPage` |
+| **OSRM** (`router.project-osrm.org`) | Road routing between rider and destination, in both map components |
+
+Both are free public endpoints with usage policies and no uptime guarantee. If
+maps or addresses misbehave in production, check these before suspecting your
+own code.
+
+### Backend
+| Library | Used for |
+|---|---|
+| Node.js 20+ / Express 5 | All six services |
+| TypeScript | Compiled per service with `tsc`; no bundler |
+| Mongoose 8/9 | Models in `auth`, `restaurant`, `rider`, including **`2dsphere` geospatial indexes** for nearby search and dispatch, and a **TTL index** to expire unpaid orders |
+| MongoDB driver (raw) | `admin` only — it reads collections other services own, so it deliberately avoids redefining their schemas |
+| `jsonwebtoken` | One shared `JWT_SECRET` across every service |
+| **Socket.IO** | The `realtime` service; rooms are `user:<id>` and `restaurant:<id>` |
+| **RabbitMQ (`amqplib`)** | Payment confirmation and rider dispatch queues |
+| Multer + `datauri` | Multipart upload handling before forwarding to Cloudinary |
+| Cloudinary | Image hosting for restaurants, menu items and rider documents |
+| **Razorpay** | Primary payment provider, with server-side signature verification |
+| **Stripe** | Alternative provider, via hosted Checkout sessions |
+| `googleapis` | Exchanges the OAuth auth code for a profile |
+| `cors` | Env-driven allow-list per service |
 
 ## Project Structure
 
