@@ -1,5 +1,4 @@
 import { Navigate, Outlet } from "react-router-dom";
-import React from 'react'
 import { useAppData } from "../context/AppContext";
 
 const PublicRoute = () => {

@@ -3,7 +3,7 @@ import type { IMenuItem } from "../types"
 import { FiEyeOff } from "react-icons/fi";
 import { BsCartPlus, BsEye } from "react-icons/bs";
 import { BiTrash } from "react-icons/bi";
-import toast, { LoaderIcon } from "react-hot-toast";
+import toast from "react-hot-toast";
 import { VscLoading } from "react-icons/vsc";
 import axios from "axios";
 import { restaurantService } from "../main";
