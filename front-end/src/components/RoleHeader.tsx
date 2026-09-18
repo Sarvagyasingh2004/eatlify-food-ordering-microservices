@@ -4,12 +4,15 @@ import { useAppData } from "../context/AppContext";
 
 interface Props {
     title: string;
+    // The seller page already has its own logout in RestaurantProfile, which
+    // also closes the restaurant first - a better action than a plain sign-out.
+    showLogout?: boolean;
 }
 
 // The seller, rider and admin dashboards render outside BrowserRouter, so they
 // cannot use Account.tsx (or useNavigate) to sign out. Clearing the user is
 // enough: App falls back to the router, where ProtectedRoute redirects to login.
-const RoleHeader = ({ title }: Props) => {
+const RoleHeader = ({ title, showLogout = true }: Props) => {
     const { user, setUser, setIsAuth } = useAppData();
 
     const logoutHandler = () => {
@@ -27,13 +30,13 @@ const RoleHeader = ({ title }: Props) => {
             </div>
             <div className="flex shrink-0 items-center gap-3">
                 {user?.name && <span className="hidden text-sm text-gray-600 sm:inline">{user.name}</span>}
-                <button
+                {showLogout && <button
                     onClick={logoutHandler}
                     className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                     <BiLogOut className="h-4 w-4 text-red-500" />
                     Logout
-                </button>
+                </button>}
             </div>
         </header>
     );

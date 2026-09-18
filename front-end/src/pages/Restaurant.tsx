@@ -78,7 +78,7 @@ const Restaurant = () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <RoleHeader title="Restaurant dashboard" />
+            <RoleHeader title="Restaurant dashboard" showLogout={false} />
             <div className="px-4 py-6 space-y-6">
             <RestaurantProfile
                 restaurant={restaurant}

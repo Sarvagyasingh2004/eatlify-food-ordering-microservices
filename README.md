@@ -6,6 +6,45 @@ restaurants, order, pay, and watch the rider approach on a live map; sellers run
 their menu and see their sales; riders take deliveries and track earnings; an
 admin approves new restaurants and riders.
 
+## Screenshots
+
+### Customer
+
+| Discover nearby restaurants | Restaurant menu |
+|---|---|
+| ![Home](screenshots/02-customer-home.png) | ![Menu](screenshots/03-restaurant-menu.png) |
+
+| Checkout | Live order tracking |
+|---|---|
+| ![Checkout](screenshots/05-checkout.png) | ![Tracking](screenshots/07-order-tracking.png) |
+
+| Order history | Account |
+|---|---|
+| ![Orders](screenshots/06-my-orders.png) | ![Account](screenshots/08-account.png) |
+
+### Restaurant owner
+
+Live order board, menu management, and the sales dashboard — gross food sales,
+platform commission, net payout, a daily series and best sellers.
+
+| Dashboard | Sales |
+|---|---|
+| ![Seller dashboard](screenshots/09-seller-dashboard.png) | ![Sales](screenshots/10-seller-sales.png) |
+
+### Rider
+
+Live offers and active delivery, completed history, and earnings by range.
+
+| Live | Completed | Earnings |
+|---|---|---|
+| ![Rider live](screenshots/11-rider-live.png) | ![Completed](screenshots/12-rider-completed.png) | ![Earnings](screenshots/13-rider-earnings.png) |
+
+### Admin & login
+
+| Approval queue | Login |
+|---|---|
+| ![Admin](screenshots/14-admin-dashboard.png) | ![Login](screenshots/01-login.png) |
+
 ## Features
 
 ### Customers
