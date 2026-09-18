@@ -147,7 +147,7 @@ const Cart = () => {
                 }
                 <div className="flex justify-between text-base font-semibold border-t p-2">
                     <span>Grand total</span>
-                    <span>{grandTotal}</span>
+                    <span>₹{grandTotal}</span>
                 </div>
                 <button
                     className={`mt-3 rounded-lg w-full bg-[#E23744] py-3 text-sm font-semibold text-white hover:bg-red-700 ${restaurant.isOpen ? "" : "opacity-50 cursor-not-allowed"}`}

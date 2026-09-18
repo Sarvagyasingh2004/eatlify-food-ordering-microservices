@@ -50,4 +50,3 @@ const SelectRole = () => {
 }
 
 export default SelectRole
-SelectRole
