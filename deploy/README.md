@@ -50,6 +50,7 @@ Two routes are deliberately unreachable from the internet:
 
 | File | Purpose |
 |---|---|
+| `01-oracle-setup.md` | Provisioning the server (Oracle Cloud Always Free) |
 | `docker-compose.yml` | The eight-container stack |
 | `../services/Dockerfile` | One parameterised image build for all six services |
 | `nginx/templates/default.conf.template` | TLS termination and path routing |
@@ -58,7 +59,12 @@ Two routes are deliberately unreachable from the internet:
 
 ## Prerequisites
 
+Provisioning the box is a separate step: **[01-oracle-setup.md](01-oracle-setup.md)**
+walks through Oracle Cloud Always Free from signup to a Docker-ready instance.
+Any Ubuntu host works just as well — this file only assumes the result.
+
 - A Linux box with Docker Engine and the Compose plugin, ports 80 and 443 open
+  **in both the cloud firewall and the host's own iptables**
 - A DuckDNS subdomain pointing at its public IP
 - MongoDB Atlas, with **the box's IP added under Network Access**
 - Cloudinary, Google OAuth, and Razorpay and/or Stripe credentials
@@ -218,8 +224,8 @@ lockfiles and rejects them with `EUSAGE`. Node 24 ships npm 11 and `npm ci`
 succeeds. If you regenerate a lockfile with a different npm major, expect to
 revisit this.
 
-The image is multi-arch, so it builds natively on **arm64** (Oracle Ampere,
-Apple Silicon) as well as x86_64. The backend has no native addons — verified,
+The image is multi-arch and **has been built and run as `linux/arm64`** (all six
+services), which is what Oracle Ampere runs. The backend has no native addons —
 zero compiled `.node` binaries — so ARM needs no special handling.
 
 Containers run as **uid 1000 (`node`)**, not root. No service writes to disk
