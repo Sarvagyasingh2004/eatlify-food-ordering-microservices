@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { isAuth, isSeller } from "../middlewares/isAuth.js";
+import { rateLimiter } from "../middlewares/rateLimit.js";
 import {
     assignRiderToOrder,
     createOrder,
@@ -19,7 +20,7 @@ const router = Router();
 
 // --- customer ---
 router.get("/myorder", isAuth, getMyOrders);
-router.post("/add", isAuth, createOrder);
+router.post("/add", isAuth, rateLimiter({ name: "order-create", limit: 10, windowSeconds: 60 }), createOrder);
 
 // --- seller ---
 router.get("/restaurant/:restaurantId", isAuth, isSeller, fetchRestaurantOrders);

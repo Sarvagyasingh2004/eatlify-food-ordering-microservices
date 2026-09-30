@@ -48,11 +48,33 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Cache and rate-limit counters only - nothing here needs to survive a restart,
+  # so persistence is off and memory is bounded with LRU eviction rather than
+  # letting the cache grow until the box notices.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [eatlify]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   auth:
     <<: *service
     build: {<<: *build, args: {SERVICE: auth}}
     environment:
       PORT: 5001
+    depends_on:
+      redis: {condition: service_healthy}
 
   restaurant:
     <<: *service
@@ -61,6 +83,7 @@ services:
       PORT: 5002
     depends_on:
       rabbitmq: {condition: service_healthy}
+      redis: {condition: service_healthy}
 
   utils:
     <<: *service
@@ -69,6 +92,7 @@ services:
       PORT: 5003
     depends_on:
       rabbitmq: {condition: service_healthy}
+      redis: {condition: service_healthy}
 
   realtime:
     <<: *service
@@ -83,6 +107,7 @@ services:
       PORT: 5005
     depends_on:
       rabbitmq: {condition: service_healthy}
+      redis: {condition: service_healthy}
 
   admin:
     <<: *service

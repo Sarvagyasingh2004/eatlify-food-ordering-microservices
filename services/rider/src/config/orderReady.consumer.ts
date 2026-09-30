@@ -1,33 +1,36 @@
 import { getChannel } from "./rabbitmq.js";
 import { emitToRoom } from "./realtime.js";
 import { Rider } from "../models/Rider.js";
+import { PermanentFailure, processWithDlq } from "./dlq.js";
+
+type OrderReadyEvent = {
+    type?: string;
+    data?: {
+        orderId?: string;
+        restaurantId?: string;
+        location?: { type: "Point"; coordinates: [number, number] };
+    };
+};
 
 export const startOrderReadyConsumer = async () => {
     const channel = getChannel();
-    console.log("Starting to consume from :", process.env.ORDER_READY_QUEUE!);
+    const queue = process.env.ORDER_READY_QUEUE!;
 
-    channel.consume(process.env.ORDER_READY_QUEUE!, async (msg) => {
-        if (!msg) {
-            return;
-        }
+    console.log("Starting to consume from :", queue);
 
-        try {
-            console.log("Recieved Message : ", msg.content.toString());
+    await channel.consume(queue, (msg) => {
+        if (!msg) return;
 
-            const event = JSON.parse(msg.content.toString());
-
-            console.log("Event type : ", event.type);
-
+        void processWithDlq<OrderReadyEvent>(channel, queue, msg, async (event) => {
             if (event.type !== "ORDER_READY_FOR_RIDER") {
-                console.log("Skipping non-order-ready-for-rider-event");
-
-                channel.ack(msg);
-                return;
+                throw new PermanentFailure(`unexpected event type: ${String(event.type)}`);
             }
 
-            const { orderId, restaurantId, location } = event.data;
+            const { orderId, restaurantId, location } = event.data ?? {};
 
-            console.log("Searching for rider near : ", location);
+            if (!orderId || !restaurantId || !location) {
+                throw new PermanentFailure("ORDER_READY_FOR_RIDER is missing orderId, restaurantId or location");
+            }
 
             const riders = await Rider.find({
                 isAvailable: true,
@@ -40,29 +43,24 @@ export const startOrderReadyConsumer = async () => {
                 },
             });
 
-            console.log(`Found ${riders.length} riders nearby`);
+            console.log(`Found ${riders.length} riders near ${JSON.stringify(location.coordinates)}`);
 
             if (riders.length === 0) {
-                console.log("No riders available nearby");
-                channel.ack(msg);
+                // Nobody is online nearby. Not a failure - retrying would not
+                // conjure a rider, and the order stays claimable when one appears.
+                console.log(`No riders available for order ${orderId}`);
                 return;
             }
 
-            for (const rider of riders) {
-                console.log(`Notifying rider with userId ${rider.userId} `);
-                // emitToRoom swallows its own failures, so one unreachable
-                // rider does not stop the rest being notified
-                await emitToRoom("order:available", `user:${rider.userId}`, { orderId, restaurantId });
-            }
+            // emitToRoom swallows its own failures, so one unreachable rider does
+            // not stop the rest being notified
+            await Promise.all(
+                riders.map((rider) =>
+                    emitToRoom("order:available", `user:${rider.userId}`, { orderId, restaurantId }),
+                ),
+            );
 
-            channel.ack(msg);
-            console.log("Message acknowledged");
-
-        } catch (error) {
-            console.error(`OrderReady consumer error`, error);
-
-            // drop the poison message instead of leaving it unacked forever
-            channel.nack(msg, false, false);
-        }
+            console.log(`Notified ${riders.length} rider(s) about order ${orderId}`);
+        });
     });
 };

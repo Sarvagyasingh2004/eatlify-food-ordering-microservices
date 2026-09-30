@@ -5,6 +5,20 @@ import Restaurant from "../models/Restaurant.js";
 import getBuffer from "../config/dataUri.js";
 import axios from "axios";
 import jwt from "jsonwebtoken";
+import { cacheDel, cacheGet, cacheSet } from "../config/redis.js";
+
+// A single restaurant keys deterministically, so it is invalidated on every edit.
+const restaurantKey = (id: string) => `restaurant:${id}`;
+const RESTAURANT_TTL_SECONDS = 600;
+
+// Discovery is the most expensive query in the service ($geoNear over a 2dsphere
+// index). It cannot be invalidated precisely - an edit to one restaurant would
+// touch an unknown set of coordinate buckets - so it carries a short TTL and
+// accepts that staleness instead. Coordinates are rounded to ~100m so nearby
+// users share an entry rather than each minting their own.
+const nearbyKey = (lat: number, lng: number, radius: number, search: string) =>
+    `nearby:${lat.toFixed(3)}:${lng.toFixed(3)}:${radius}:${search}`;
+const NEARBY_TTL_SECONDS = 60;
 
 export const addRestaurant = TryCatch(async (req: AuthenticatedRequest, res: Response) => {
 
@@ -154,6 +168,10 @@ export const updateRestaurantStatus = TryCatch(async (req: AuthenticatedRequest,
         });
     }
 
+    // isOpen drives the discovery ordering, so the detail cache must not keep
+    // serving a closed restaurant as open. Nearby results ride their 60s TTL.
+    await cacheDel(restaurantKey(restaurant._id.toString()));
+
     return res.status(203).json({
         success: true,
         message: "Restaurant status updated successfully",
@@ -186,6 +204,8 @@ export const updateRestaurant = TryCatch(async (req: AuthenticatedRequest, res: 
         });
     }
 
+    await cacheDel(restaurantKey(restaurant._id.toString()));
+
     return res.status(203).json({
         success: true,
         message: "Restaurant updated successfully",
@@ -210,6 +230,19 @@ export const getNearbyRestaurants = TryCatch(async (req: Request, res: Response)
 
     if (search && typeof search == "string") {
         query.name = { $regex: search, $options: "i " };
+    }
+
+    const cacheKey = nearbyKey(
+        Number(latitude),
+        Number(longitude),
+        Number(radius),
+        typeof search === "string" ? search : "",
+    );
+
+    const cached = await cacheGet<unknown[]>(cacheKey);
+
+    if (cached) {
+        return res.json({ success: true, count: cached.length, restaurants: cached });
     }
 
     const restaurants = await Restaurant.aggregate([
@@ -240,6 +273,8 @@ export const getNearbyRestaurants = TryCatch(async (req: Request, res: Response)
         }
     ]);
 
+    await cacheSet(cacheKey, restaurants, NEARBY_TTL_SECONDS);
+
     res.json({
         success: true,
         count: restaurants.length,
@@ -249,7 +284,18 @@ export const getNearbyRestaurants = TryCatch(async (req: Request, res: Response)
 
 
 export const fetchSingleRestaurant = TryCatch(async (req: Request, res: Response) => {
-    const restaurant = await Restaurant.findById(req.params.id);
+    const id = String(req.params.id ?? "");
+
+    const cached = await cacheGet<unknown>(restaurantKey(id));
+    if (cached) return res.json({ success: true, restaurant: cached });
+
+    const restaurant = await Restaurant.findById(id);
+
+    // Only cache a hit; caching null would pin a 404 for the whole TTL.
+    if (restaurant) {
+        await cacheSet(restaurantKey(id), restaurant, RESTAURANT_TTL_SECONDS);
+    }
+
     return res.json({
         success: true,
         restaurant,

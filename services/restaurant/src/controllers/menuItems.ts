@@ -5,6 +5,13 @@ import Restaurant from "../models/Restaurant.js";
 import axios from "axios";
 import getBuffer from "../config/dataUri.js";
 import MenuItems from "../models/MenuItems.js";
+import { cacheDel, cacheGet, cacheSet } from "../config/redis.js";
+
+// Menus are read on every restaurant page view and change rarely, so they are
+// cached under a deterministic key and invalidated explicitly on every mutation
+// rather than left to expire.
+const menuKey = (restaurantId: string) => `menu:${restaurantId}`;
+const MENU_TTL_SECONDS = 600;
 
 export const addMenuItem = TryCatch(async (req: AuthenticatedRequest, res: Response) => {
     if (!req.user) {
@@ -63,6 +70,8 @@ export const addMenuItem = TryCatch(async (req: AuthenticatedRequest, res: Respo
     })
 
 
+    await cacheDel(menuKey(restaurant._id.toString()));
+
     return res.status(201).json({
         success: true,
         message: "MenuItem created successfully",
@@ -72,7 +81,7 @@ export const addMenuItem = TryCatch(async (req: AuthenticatedRequest, res: Respo
 
 
 export const getAll = TryCatch(async (req: AuthenticatedRequest, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id ?? "");
     if (!id) {
         return res.status(400).json({
             success: false,
@@ -80,7 +89,12 @@ export const getAll = TryCatch(async (req: AuthenticatedRequest, res: Response) 
         });
     }
 
+    const cached = await cacheGet<unknown[]>(menuKey(id));
+    if (cached) return res.json(cached);
+
     const menuItems = await MenuItems.find({ restaurantId: id });
+    await cacheSet(menuKey(id), menuItems, MENU_TTL_SECONDS);
+
     return res.json(menuItems);
 });
 
@@ -115,6 +129,7 @@ export const deleteMenuItems = TryCatch(async (req: AuthenticatedRequest, res: R
     }
 
     await menuItem.deleteOne();
+    await cacheDel(menuKey(menuItem.restaurantId.toString()));
 
     return res.json({
         messag: "Menu item deleted successfully"
@@ -161,6 +176,7 @@ export const toggleMenuItemAvailability = TryCatch(async (req: AuthenticatedRequ
 
     menuItem.isAvailable = !menuItem.isAvailable;
     await menuItem.save();
+    await cacheDel(menuKey(menuItem.restaurantId.toString()));
 
     return res.status(200).json({
         status: "success",

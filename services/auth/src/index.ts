@@ -4,6 +4,7 @@ import connectToDB from "./config/db.js";
 import authRoute from "./routes/auth.js"
 import { Request, Response } from "express";
 import cors from "cors";
+import { connectRedis } from "./config/redis.js";
 dotenv.config();
 const PORT = process.env.PORT || 5000;
 // Comma-separated list so a deployment can allow both the production frontend
@@ -14,6 +15,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
     .filter(Boolean);
 
 const app = express();
+
+// One hop: nginx. Without this every request behind the proxy shares the
+// proxy's address, which would make IP-based rate limiting global.
+app.set("trust proxy", 1);
 
 
 app.use(
@@ -29,6 +34,8 @@ app.use("/api/auth", authRoute);
 app.use("/api/health", (req: Request, res: Response) => {
     res.json(`Server health check  200 All OK`)
 });
+
+await connectRedis();
 
 app.listen(PORT, () => {
     connectToDB();

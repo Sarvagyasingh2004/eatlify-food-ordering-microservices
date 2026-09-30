@@ -14,6 +14,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
 
 const app = express();
 
+// One hop: nginx. Without this every request behind the proxy shares the
+// proxy's address, which would make IP-based rate limiting global.
+app.set("trust proxy", 1);
+
 
 app.use(
     cors({

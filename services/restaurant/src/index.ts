@@ -9,6 +9,7 @@ import addressRoutes from "./routes/address.js";
 import orderRoutes from "./routes/order.js";
 import { connectToRabbitMQ } from "./config/rabbitmq.js";
 import { startPaymentConsumer } from "./config/payment.consumer.js";
+import { connectRedis } from "./config/redis.js";
 dotenv.config();
 
 await connectToRabbitMQ();
@@ -22,6 +23,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
     .filter(Boolean);
 
 const app = express();
+
+// One hop: nginx. Without this every request behind the proxy shares the
+// proxy's address, which would make IP-based rate limiting global.
+app.set("trust proxy", 1);
 app.use(
     cors({
         origin: allowedOrigins,
@@ -38,6 +43,8 @@ app.use("/api/item", menuItemsRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/address", addressRoutes);
 app.use("/api/order", orderRoutes);
+
+await connectRedis();
 
 app.listen(PORT, () => {
     console.log(`Restaurant service is running at port ${PORT}`);

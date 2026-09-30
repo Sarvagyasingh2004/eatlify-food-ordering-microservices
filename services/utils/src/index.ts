@@ -5,6 +5,7 @@ import cors from "cors";
 import { connectToRabbitMQ } from "./config/rabbitmq.js";
 import uploadRoutes from "./routes/cloudinary.js";
 import paymentRoutes from "./routes/payment.js";
+import { connectRedis } from "./config/redis.js";
 
 connectToRabbitMQ();
 
@@ -17,6 +18,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
     .filter(Boolean);
 
 const app = express();
+
+// One hop: nginx. Without this every request behind the proxy shares the
+// proxy's address, which would make IP-based rate limiting global.
+app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -32,6 +37,8 @@ const PORT = Number(process.env.PORT) || 5003;
 
 app.use("/api", uploadRoutes);
 app.use("/api/payment", paymentRoutes);
+
+await connectRedis();
 
 app.listen(PORT, () => {
     console.log(`Utils service is running at port ${PORT}`);

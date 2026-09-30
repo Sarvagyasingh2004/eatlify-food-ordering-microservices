@@ -12,6 +12,7 @@ import {
     updateRiderLocation,
 } from "../controllers/rider.js";
 import uploadFile from "../middlewares/multer.js";
+import { rateLimiter } from "../middlewares/rateLimit.js";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.patch("/toggle", isAuth, toggleRiderAvailability);
 router.post("/accept/:orderId", isAuth, acceptOrder);
 router.get("/order/current", isAuth, fetchMyCurrentOrder);
 router.patch("/order/update/:orderId", isAuth, updateOrderStatus);
-router.post("/location", isAuth, updateRiderLocation);
+router.post("/location", isAuth, rateLimiter({ name: "rider-location", limit: 12, windowSeconds: 60 }), updateRiderLocation);
 
 // --- history & earnings ---
 router.get("/orders/completed", isAuth, fetchMyCompletedOrders);
