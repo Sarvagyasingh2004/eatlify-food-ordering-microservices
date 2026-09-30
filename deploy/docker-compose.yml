@@ -36,8 +36,12 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     # restaurant awaits the broker at module load and rider exits if it is
     # missing, so they must not start before this reports healthy
+    # `ping` only proves the Erlang node is up - the AMQP listener may not be
+    # bound yet, which let restaurant/rider/utils start too early and crash with
+    # ECONNREFUSED on the very first boot. check_port_connectivity waits for the
+    # listener itself.
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 15s
       timeout: 10s
       retries: 6
